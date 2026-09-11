@@ -1,0 +1,611 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Air Writing</title>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #050505;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .app {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #050505;
+        }
+
+        /* Camera */
+        #video {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        /* Drawing canvas */
+        #canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Dark overlay */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+            background: linear-gradient(
+                to bottom,
+                rgba(0,0,0,0.65),
+                transparent 25%,
+                transparent 75%,
+                rgba(0,0,0,0.7)
+            );
+        }
+
+        /* Header */
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+
+            text-align: center;
+            padding: 12px 25px;
+            border-radius: 30px;
+
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            letter-spacing: 2px;
+        }
+
+        .status {
+            margin-top: 5px;
+            font-size: 13px;
+            color: #00ffcc;
+        }
+
+        /* Controls */
+        .controls {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+
+            z-index: 5;
+
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            padding: 12px;
+
+            border-radius: 18px;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(12px);
+
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        button {
+            border: none;
+            padding: 11px 18px;
+            border-radius: 10px;
+
+            color: white;
+            background: #222;
+
+            cursor: pointer;
+            font-size: 14px;
+
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #333;
+            transform: translateY(-1px);
+        }
+
+        #clear {
+            background: #d62828;
+        }
+
+        #clear:hover {
+            background: #f03333;
+        }
+
+        .color {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            padding: 0;
+            border: 2px solid white;
+        }
+
+        .green {
+            background: #00ff88;
+        }
+
+        .cyan {
+            background: #00eaff;
+        }
+
+        .pink {
+            background: #ff2bd6;
+        }
+
+        .yellow {
+            background: #ffe600;
+        }
+
+        /* Instructions */
+        .instructions {
+            position: absolute;
+            top: 100px;
+            left: 25px;
+            z-index: 5;
+
+            max-width: 260px;
+
+            padding: 15px;
+
+            border-radius: 15px;
+
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+
+            font-size: 13px;
+            line-height: 1.6;
+
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .instructions strong {
+            color: #00ffcc;
+        }
+
+        /* Finger cursor */
+        #cursor {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+
+            border-radius: 50%;
+
+            background: #00ff88;
+
+            box-shadow:
+                0 0 10px #00ff88,
+                0 0 25px #00ff88;
+
+            z-index: 6;
+
+            display: none;
+
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+
+        @media(max-width:600px) {
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .instructions {
+                top: 85px;
+                left: 10px;
+                max-width: 220px;
+            }
+
+            .controls {
+                width: 95%;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- Camera -->
+    <video id="video" autoplay playsinline></video>
+
+    <!-- Drawing layer -->
+    <canvas id="canvas"></canvas>
+
+    <div class="overlay"></div>
+
+    <!-- Finger cursor -->
+    <div id="cursor"></div>
+
+    <!-- Header -->
+    <div class="header">
+        <h1>✋ AIR WRITING</h1>
+        <div class="status" id="status">
+            Starting camera...
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions">
+        <strong>How to use</strong><br><br>
+
+        ☝️ Raise your index finger<br>
+        🤏 Bring thumb + index finger together<br>
+        ✍️ Move your finger in the air<br>
+        📝 Your movement will be drawn<br>
+        ✋ Separate fingers to stop drawing
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+
+        <button id="clear">
+            🗑 Clear
+        </button>
+
+        <button id="toggle">
+            ⏸ Pause
+        </button>
+
+        <button class="color green" data-color="#00ff88"></button>
+        <button class="color cyan" data-color="#00eaff"></button>
+        <button class="color pink" data-color="#ff2bd6"></button>
+        <button class="color yellow" data-color="#ffe600"></button>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const statusText = document.getElementById("status");
+    const cursor = document.getElementById("cursor");
+
+    const clearButton = document.getElementById("clear");
+    const toggleButton = document.getElementById("toggle");
+
+    let drawing = false;
+    let paused = false;
+
+    let lastX = null;
+    let lastY = null;
+
+    let brushColor = "#00ff88";
+    let brushSize = 6;
+
+
+    /* Resize canvas */
+
+    function resizeCanvas() {
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+    }
+
+    resizeCanvas();
+
+    window.addEventListener("resize", resizeCanvas);
+
+
+    /* Clear drawing */
+
+    clearButton.addEventListener("click", () => {
+
+        ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        lastX = null;
+        lastY = null;
+
+    });
+
+
+    /* Pause */
+
+    toggleButton.addEventListener("click", () => {
+
+        paused = !paused;
+
+        toggleButton.innerText =
+            paused ? "▶ Resume" : "⏸ Pause";
+
+        if (paused) {
+            drawing = false;
+            lastX = null;
+            lastY = null;
+        }
+
+    });
+
+
+    /* Colors */
+
+    document.querySelectorAll(".color").forEach(button => {
+
+        button.addEventListener("click", () => {
+
+            brushColor = button.dataset.color;
+
+            cursor.style.background = brushColor;
+
+            cursor.style.boxShadow =
+                `0 0 10px ${brushColor},
+                 0 0 25px ${brushColor}`;
+
+        });
+
+    });
+
+
+    /* Draw line */
+
+    function drawLine(x, y) {
+
+        if (lastX === null || lastY === null) {
+
+            lastX = x;
+            lastY = y;
+
+            return;
+
+        }
+
+        ctx.beginPath();
+
+        ctx.moveTo(lastX, lastY);
+
+        ctx.lineTo(x, y);
+
+        ctx.strokeStyle = brushColor;
+
+        ctx.lineWidth = brushSize;
+
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = brushColor;
+
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+
+        lastX = x;
+        lastY = y;
+
+    }
+
+
+    /* Distance between two points */
+
+    function distance(a, b) {
+
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+
+        return Math.sqrt(dx * dx + dy * dy);
+
+    }
+
+
+    /* MediaPipe Hands */
+
+    const hands = new Hands({
+
+        locateFile: (file) => {
+
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+
+        }
+
+    });
+
+
+    hands.setOptions({
+
+        maxNumHands: 1,
+
+        modelComplexity: 1,
+
+        minDetectionConfidence: 0.7,
+
+        minTrackingConfidence: 0.7
+
+    });
+
+
+    /* Hand detection */
+
+    hands.onResults(results => {
+
+        if (paused) return;
+
+
+        if (
+            !results.multiHandLandmarks ||
+            results.multiHandLandmarks.length === 0
+        ) {
+
+            statusText.innerText = "Show your hand ✋";
+
+            cursor.style.display = "none";
+
+            drawing = false;
+
+            lastX = null;
+            lastY = null;
+
+            return;
+
+        }
+
+
+        const landmarks =
+            results.multiHandLandmarks[0];
+
+
+        /*
+         * MediaPipe landmark:
+         *
+         * 8 = index finger tip
+         * 4 = thumb tip
+         */
+
+        const indexTip = landmarks[8];
+        const thumbTip = landmarks[4];
+
+
+        /*
+         * Convert normalized coordinates
+         * into screen coordinates.
+         *
+         * Camera is mirrored, therefore X is inverted.
+         */
+
+        const x =
+            (1 - indexTip.x) *
+            window.innerWidth;
+
+        const y =
+            indexTip.y *
+            window.innerHeight;
+
+
+        /* Show finger cursor */
+
+        cursor.style.display = "block";
+
+        cursor.style.left = x + "px";
+        cursor.style.top = y + "px";
+
+
+        /*
+         * Pinch detection
+         *
+         * If thumb and index finger
+         * are close together => writing mode
+         */
+
+        const pinchDistance =
+            distance(indexTip, thumbTip);
+
+
+        if (pinchDistance < 0.08) {
+
+            statusText.innerText =
+                "✍️ Writing...";
+
+            cursor.style.transform =
+                "translate(-50%, -50%) scale(1.5)";
+
+
+            if (!drawing) {
+
+                drawing = true;
+
+                lastX = x;
+                lastY = y;
+
+            }
+            else {
+
+                drawLine(x, y);
+
+            }
+
+        }
+
+        else {
+
+            statusText.innerText =
+                "🤏 Pinch to write";
+
+            cursor.style.transform =
+                "translate(-50%, -50%) scale(1)";
+
+            drawing = false;
+
+            lastX = null;
+            lastY = null;
+
+        }
+
+    });
+
+
+    /* Start camera */
+
+    const camera = new Camera(video, {
+
+        onFrame: async () => {
+
+            await hands.send({
+                image: video
+            });
+
+        },
+
+        width: 1280,
+        height: 720
+
+    });
+
+
+    camera.start();
+
+
+    statusText.innerText =
+        "Camera ready — show your hand ✋";
+
+</script>
+
+</body>
+</html>
+```
